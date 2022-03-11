@@ -11,11 +11,47 @@ import os
 
 # interpolate to this grid:
 
+def makeLonSafe(lon, min_lon=0.,):
+    max_lon = min_lon+360.
+    """
+    Makes sure that the value is between -180 and 180.
+    """
+    while True:
+        if -min_lon < lon <= max_lon:
+            return lon
+        if lon <= min_lon:
+            lon += 360.
+        if lon > max_lon:
+            lon -= 360.
+
+
+def makeLonSafeArr(lon):
+    """
+    Makes sure that the entire array is between -180 and 180.
+    """
+
+    #input lons: -179.75 179.75
+    #output lons: 0.0 358.125
+
+    if lon.ndim == 3:
+     for (l,ll,lll,) , lo in np.ndenumerate(lon):
+        lon[l,ll,lll] = makeLonSafe(lo)
+     return lon
+    if lon.ndim == 2:
+     for l,lon1 in enumerate(lon):
+      for ll,lon2 in enumerate(lon1):
+       lon[l,ll] = makeLonSafe(lon2)
+     return lon
+    if lon.ndim == 1:
+     for l,lon1 in enumerate(lon):
+       lon[l] = makeLonSafe(lon1)
+     return lon
+    assert False
 
 
 
 
-def regrid(arr, lats, lons, new_lats, new_lons, method='linear',fill_value=1.E20):
+def regrid(arr, lats, lons, new_lats, new_lons, method='nearest',fill_value=1.E20):
     """
      Regrid into a higher res image.
 
@@ -24,6 +60,7 @@ def regrid(arr, lats, lons, new_lats, new_lons, method='linear',fill_value=1.E20
     lats in input longitube
     It's expecting a
     """
+    lons = makeLonSafeArr(lons)
     if lons.ndim == 2 and lats.ndim == 2:
         in_points = np.array([[la, lo] for la, lo in zip(lats.flatten(), lons.flatten())])
     elif lons.ndim == 1 and lats.ndim == 1:
@@ -43,6 +80,9 @@ def regrid(arr, lats, lons, new_lats, new_lons, method='linear',fill_value=1.E20
         out_points = np.array([[la, lo] for la, lo in zip(mg_nlats.flatten(), mg_nlongs.flatten())])
 
     else: assert 0
+    print('input lons:', lons.min(), lons.max())
+    print('output lons:', new_lons.min(), new_lons.max())
+    #assert 0 
     values = np.array(arr.data.flatten())
     print('regrid:', len(in_points), len(out_points), len(values), (arr.min(), arr.max()))
 
@@ -50,8 +90,12 @@ def regrid(arr, lats, lons, new_lats, new_lons, method='linear',fill_value=1.E20
     new_arr = new_arr.reshape(mg_nlats.shape)
     new_arr= np.ma.masked_where(new_arr==fill_value, new_arr)
     print('regridded:',(new_arr.min(), new_arr.max()))
+    if np.isnan(new_arr.min()) or np.isnan(new_arr.max()):
+        assert 0
     print(arr.shape, new_arr.shape, mg_lats.shape, mg_nlats.shape)
-
+#    pyplot.pcolormesh(new_arr)
+#    pyplot.show()
+#    assert 0
 
     return new_arr
 
@@ -65,7 +109,7 @@ def run(fni, fng, fno, datasetFormat='NETCDF4'):
     fno: output path
     """
     debug = True
-    Twelve_months_only=False
+    Twelve_months_only=0 #True 
 
     if debug:
         print('Opening', fni)
@@ -100,7 +144,7 @@ def run(fni, fng, fno, datasetFormat='NETCDF4'):
     removeVar = 'pCO2a' # from ncg
     if fni.find('ndep-nhx')>-1: 
         newVars = ['nhx', ] # from nci
-    if fni.find('ndep-noy') > -2:
+    if fni.find('ndep-noy') > -1:
         newVars = ['noy', ] # from nci
 
 
@@ -182,8 +226,9 @@ def run(fni, fng, fno, datasetFormat='NETCDF4'):
             if Twelve_months_only and t >=12: continue
             if t%6==0: 
                 print('iterating', t, 'of', len(old_time))
-            out_arr[t] = regrid(nci.variables[var][t,:,:], old_lats, old_lons, new_lats,new_lons, method='linear',)
-
+            out_arr[t] = regrid(nci.variables[var][t,:,:], old_lats, old_lons, new_lats,new_lons, method='nearest',)
+            if out_arr[t].max()>1E10: 
+                assert 0
         nco.variables[var][:] = np.ma.array(out_arr)
         print('successfully populated:\t', var)
 
@@ -195,18 +240,60 @@ def run(fni, fng, fno, datasetFormat='NETCDF4'):
     print('successfully created:\t', fno)
 
 
+def plot_map(arr, key,fold='images/'):
+    fn = fold+key+'.png'
+    if os.path.exists(fn):
+        print('exists:', fn)
+        return
+    if not os.path.exists(fold):
+        os.mkdir(fold)
+
+    pyplot.pcolormesh(arr)
+    pyplot.colorbar()
+    pyplot.title(key)
+    fn = fold+key+'.png'
+    print('Saving figure:', fn)
+    pyplot.savefig(fn)
+    pyplot.close()
 
 
-outgrid = '/users/modellers/gig/Documents/MissionAtantic/eORCA1_Stuff/pCO2a_y1958.nc'
-# outgrid2 = '/users/modellers/gig/Documents/MissionAtantic/eORCA1_Stuff/gelbstoff_absorption_satellite_y1958.nc'
+def plot_all(fn, var = '', key=''):
+    nc = Dataset(fn, 'r')
+    arr = nc.variables[var][:]# ean(0)
+    plot_map(arr.mean(0), key=key+'_mean',fold='images/'+key+'/', )
+    plot_map(arr.max(0), key=key+'_max',fold='images/'+key+'/', )
+    plot_map(arr.min(0), key=key+'_min',fold='images/'+key+'/', )
+    print(nc)
+    nc.close()
 
-in_data_fn  = '/data/sthenno1/scratch/yuti/MA_MissionAtlantic/N_deposition/ndep-nhx_histsoc_monthly_1901_2018.nc'
-in_data_fn2 = '/data/sthenno1/scratch/yuti/MA_MissionAtlantic/N_deposition/ndep-noy_histsoc_monthly_1901_2018.nc'
-
-outpath   = '/data/sthenno1/scratch/ledm/missionatlantic/n_dep/ndep-nhx_histsoc_monthly_1901_2018_atmosgrid_v3.nc'
-outpath_2 = '/data/sthenno1/scratch/ledm/missionatlantic/n_dep/ndep-noy_histsoc_monthly_1901_2018_atmosgrid_v1.nc'
 
 
-#run(in_data_fn, outgrid,outpath) # nhx
-run(in_data_fn2, outgrid,outpath_2)
+def main():
+    #outgrid = '/users/modellers/gig/Documents/MissionAtantic/eORCA1_Stuff/pCO2a_y1958.nc'
+    outgrid = '/users/modellers/gig/Documents/MissionAtantic/eORCA1_Stuff/INPUTS/pCO2a_y1958.nc'
+    #utgrid = '/users/modellers/gig/Documents/MissionAtantic/eORCA1_Stuff/pCO2a_2_y1958.nc'
+    # outgrid2 = '/users/modellers/gig/Documents/MissionAtantic/eORCA1_Stuff/gelbstoff_absorption_satellite_y1958.nc'
+
+
+    # NHX:
+    in_data_fn  = '/data/sthenno1/scratch/yuti/MA_MissionAtlantic/N_deposition/ndep-nhx_histsoc_monthly_1901_2018.nc'
+
+    outpath   = '/data/sthenno1/scratch/ledm/missionatlantic/n_dep/ndep-nhx_histsoc_monthly_1901_2018_atmosgrid_v6.nc'
+    #outpath_1 = '/data/sthenno1/scratch/ledm/missionatlantic/n_dep/ndep-nhx_histsoc_monthly_1901_2018_atmosgrid_v1.nc'
+
+    run(in_data_fn, outgrid, outpath) # nhx
+    plot_all(outpath, var = 'nhx', key ='output_nhx_v6')
+    #return
+
+
+    # NOY:
+    outpath_2 = '/data/sthenno1/scratch/ledm/missionatlantic/n_dep/ndep-noy_histsoc_monthly_1901_2018_atmosgrid_v3.nc'
+    in_data_fn2 = '/data/sthenno1/scratch/yuti/MA_MissionAtlantic/N_deposition/ndep-noy_histsoc_monthly_1901_2018.nc'
+
+
+
+    run(in_data_fn2, outgrid,outpath_2)
+    plot_all(outpath_2, var = 'noy', key ='output_noy_v3')
+
+main()
 

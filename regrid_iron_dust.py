@@ -4,6 +4,7 @@
 # Copy over a bunch of data while adding new pixels to the grid.
 # save the file - while keeping track of data versions.
 # There may be some regridding as well.
+import os
 
 import matplotlib as mpl
 mpl.use('Agg')
@@ -248,6 +249,13 @@ def regrid(arr, lons, lats, new_lons, new_lats, method='linear',):
     # save output
 
 def plot_map(arr, key,fold='images/'):
+    fn = fold+key+'.png'
+    if os.path.exists(fn):
+        print('exists:', fn)
+        return
+    if not os.path.exists(fold):
+        os.mkdir(fold)
+
     pyplot.pcolormesh(arr)
     pyplot.colorbar()
     pyplot.title(key)
@@ -409,11 +417,21 @@ def run(fni, fng, fno, datasetFormat='NETCDF4'):
     print('successfully created:\t', fno)
 
 
+def plot_all(fn, var = '', key=''):
+    nc = Dataset(fn, 'r')
+    arr = nc.variables[var][:]# ean(0)
+    plot_map(arr.mean(0), key=key+'_mean',fold='images/'+key+'/', )
+    plot_map(arr.max(0), key=key+'_max',fold='images/'+key+'/', )
+    plot_map(arr.min(0), key=key+'_min',fold='images/'+key+'/', )
+    print(nc)
+
+    nc.close() 
 
 def main():
     input_duct_fn = 'input/dust.orca.nM.nc'
     new_grid = 'input/eORCA1_00000992_restart.nc'
     output_dust_fn = 'output/dust_orca_nM_eORCA1_v1.nc'
-    run(input_duct_fn, new_grid, output_dust_fn)
+#   run(input_duct_fn, new_grid, output_dust_fn)
 
+    plot_all(output_dust_fn, var = 'dust', key='output_dust')
 main()

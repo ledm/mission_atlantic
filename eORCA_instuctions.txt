@@ -1,0 +1,59 @@
+eORCA instructions:
+/users/modellers-new/gig/Documents/MissionAtantic/eORCA1_Stuff/eORCA1_instructions.txt
+
+1. clone ERSEM
+git clone https://gitlab.ecosystem-modelling.pml.ac.uk/edge/ersem.git
+git checkout feat/benthic_Fe
+
+2. clone FABM
+git clone https://github.com/fabm-model/fabm.git
+
+3. build fabm-ersem:
+(NB, for some reason does not install in ~/local/fabm/nemo-prod-ERSEM-edge but in ~/local/fabm/nemo)
+
+module purge
+module load PrgEnv-gnu
+module load cray-hdf5-parallel
+module load cray-netcdf-hdf5parallel
+module unload cray-mpich
+module unload craype-network-ofi
+module load craype-network-ucx
+module load cray-mpich-ucx #/8.0.16
+module load libfabric
+module load gcc
+module swap gcc/10.2.0 gcc/9.3.0
+
+cmake ~/git/fabm/src -DFABM_HOST=nemo -DFABM_ERSEM_BASE=~/git/ERSEM-edge/ -DFABM_EMBED_VERSION=ON -DFABM_INSTALL_PREFIX=~/local/fabm/nemo/lib -DERSEM_USE_IRON=on -DCMAKE_Fortran_FLAGS:STRING="-O3"
+make install -j4
+
+4. clone eORCA1
+git clone https://github.com/pmlmodelling/eORCA1.git
+git checkout eORCA1_FABM
+
+5. build everything
+# this will clone nemo and xios, build them, then build nemo-fabm-ersem and setup the eORCA1 config
+# NB, eORCA1_setup still points at some of my directories for some input files
+# some files in: /work/n01/shared/gig/MA_dummy_inputs/
+
+cd /work/n01/n01/$USER/
+mkdir eORCA1
+cd eORCA1
+
+# then adjust to local paths and run the following
+# I have them on a main_eORCA1_setup.sh script (from eORCA1)
+# may need to change directories from gig's user directories. (or request access!)
+
+
+RUNDIR=$PWD
+ORCADIR=/home/n01/n01/$USER/git/eORCA1
+FABMDIR=/home/n01/n01/$USER/local/fabm/nemo
+
+bash $ORCADIR/scripts/setup/eORCA1_setup -w $RUNDIR/test -x $RUNDIR/test -s $ORCADIR -f $FABMDIR
+
+6. run test
+# NB, may have to sbatch twice for it to work
+# this will run a little test that doesn't even get to completion, but enough to see that it runs
+
+cd test/nemo/cfgs/eORCA1/EXP00/
+sbatch runscript.slurm
+

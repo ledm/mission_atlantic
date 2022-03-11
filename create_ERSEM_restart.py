@@ -11,6 +11,7 @@ mpl.use('Agg')
 from netCDF4 import Dataset
 import numpy as np
 from matplotlib import pyplot
+import os
 
 
 imarnet_forcing_path = "/data/sthenno1/to_archive/ledm/Projects/iMarNet/OUTPUT_v2/iMarNet_forcing/"
@@ -19,8 +20,6 @@ iMarNet_inputs = "/data/sthenno1/to_archive/ledm/Projects/iMarNet/inputNetCDFs/"
 imarnet_restart = 'input/iMARNET_fields_1890_UEA_ERSEM_newFeR3c_20140919.nc'
 eorca_restart = 'input/eORCA1_00000992_restart.nc'
 ersem_restart = 'input/sthenno1/restart_trc.HC.1986-1990.12.nc'
-
-new_restart = 'input/sthenno1/new_restart_v2.nc'
 
 def regrid(arr, lons, lats, new_lons, new_lats, method='linear',):
     """
@@ -84,22 +83,22 @@ master_dict = {
         'rdttrc1' : 'ZERO',
 
         # Iron:
-		'fabm_st2DnQ6_pen_depth_f': 'TR2DQ6f',
-		'fabm_st2DbQ6_pen_depth_f': 'TR2DQ6f',
-		'TRBN7_f': 'TRBN7f',
-		'TRBP1_f': 'TRBP1f',
-		'TRBP2_f': 'TRBP2f',
-		'TRBP3_f': 'TRBP3f',
-		'TRBP4_f': 'TRBP4f',
-		'TRBR4_f': 'TRBR4f',
-		'TRBR6_f': 'TRBR6f',
-		'TRNN7_f': 'TRNN7f',
-		'TRNP1_f': 'TRNP1f',
-		'TRNP2_f': 'TRNP2f',
-		'TRNP3_f': 'TRNP3f',
-		'TRNP4_f': 'TRNP4f',
-		'TRNR4_f': 'TRNR4f',
-		'TRNR6_f': 'TRNR6f',
+        'fabm_st2DnQ6_pen_depth_f': 'TR2DQ6f',
+        'fabm_st2DbQ6_pen_depth_f': 'TR2DQ6f',
+        'TRBN7_f': 'TRBN7f',
+        'TRBP1_f': 'TRBP1f',
+        'TRBP2_f': 'TRBP2f',
+        'TRBP3_f': 'TRBP3f',
+        'TRBP4_f': 'TRBP4f',
+        'TRBR4_f': 'TRBR4f',
+        'TRBR6_f': 'TRBR6f',
+        'TRNN7_f': 'TRNN7f',
+        'TRNP1_f': 'TRNP1f',
+        'TRNP2_f': 'TRNP2f',
+        'TRNP3_f': 'TRNP3f',
+        'TRNP4_f': 'TRNP4f',
+        'TRNR4_f': 'TRNR4f',
+        'TRNR6_f': 'TRNR6f',
 
         'fabm_st2DnQ6_pen_depth_c' : 'TR2DD6m',
         'fabm_st2DnQ6_pen_depth_n' : 'TR2DD7m',
@@ -248,13 +247,19 @@ def run():
     # save output
 
 def plot_map(arr, key,fold='images/'):
+    fn = fold+key+'.png'
+    fn = fn.replace(' ', '_')
+    if os.path.exists(fn):
+        return
     pyplot.pcolormesh(arr)
     pyplot.colorbar()
     pyplot.title(key)
-    fn = fold+key+'.png'
     print('Saving figure:', fn)
+    try:os.mkdir(os.path.dirname(fn))
+    except: pass
     pyplot.savefig(fn)
     pyplot.close()
+
 
 def extend_ORCA(arr):
     """Converts old ORCA array and returns the same data in the new eORCA array"""
@@ -272,6 +277,7 @@ def extend_ORCA(arr):
     b = np.ma.masked_where(b.mask + (b==1E20), b)
     return b
 
+
 #run()
 def test_grid_convert():
     #nc = Dataset(imarnet_restart, 'r') # eORCA1 #
@@ -285,7 +291,6 @@ def test_grid_convert():
     mask = np.ma.masked_where(sb==0. + sb.mask,sb).mask
     plot_map( nc.variables['sb'][0,0], 'sb')
     plot_map( nc.variables['sb'][0,0].mask, 'sb mask')
-
 
     nc2 = Dataset(imarnet_restart, 'r') # ORCA1 grid
     lati = nc2.variables['nav_lat'][:]
@@ -357,7 +362,11 @@ test_linking()
 
 ###
 # Generate a new netCDF.
-def generate_ncdf(debug=False):
+def generate_ncdf(new_restart, debug=False):
+
+    if os.path.exists(new_restart):
+        print('file exists', generate_ncdf)
+        return
     nc = Dataset(eorca_restart, 'r')
     ncersem = Dataset(ersem_restart, 'r')
     nciMarNet = Dataset(imarnet_restart, 'r')
@@ -389,67 +398,97 @@ def generate_ncdf(debug=False):
 
     # copy variables from ERSEM
     variables = {}
+    All_Created_variables = {}
     for key, var in ncersem.variables.items():
         dims = tuple([dim.name for dim in var.get_dims()])
         print('Adding variable:', key, var.dtype, dims)
         if dims is None: assert 0
         variables[key] = newnc.createVariable(key, var.dtype, dims)
+        All_Created_variables[key] = 'unfilled (copy from ersem)'
 
     # Add "missing" data from iMarNet which isn't in the AMM domain ERSEM (ie Iron)
+    imatnettype = nciMarNet.variables['TRBP1f'].dtype
+    print(var.dtype, imatnettype)
+    
     missing_vars = [
-        ["TR2DQ6f", np.float64, ('t', 'y', 'x')],
-        ["TRBN7f", np.float64, ('t', 'z', 'y', 'x')],
-        ["TRBP1f", np.float64, ('t', 'z', 'y', 'x')],
-        ["TRBP2f", np.float64, ('t', 'z', 'y', 'x')],
-        ["TRBP3f", np.float64, ('t', 'z', 'y', 'x')],
-        ["TRBP4f", np.float64, ('t', 'z', 'y', 'x')],
-        ["TRBR4f", np.float64, ('t', 'z', 'y', 'x')],
-        ["TRBR6f", np.float64, ('t', 'z', 'y', 'x')],
-        ["TRNN7f", np.float64, ('t', 'z', 'y', 'x')],
-        ["TRNP1f", np.float64, ('t', 'z', 'y', 'x')],
-        ["TRNP2f", np.float64, ('t', 'z', 'y', 'x')],
-        ["TRNP3f", np.float64, ('t', 'z', 'y', 'x')],
-        ["TRNP4f", np.float64, ('t', 'z', 'y', 'x')],
-        ["TRNR4f", np.float64, ('t', 'z', 'y', 'x')],
-        ["TRNR6f", np.float64, ('t', 'z', 'y', 'x')],
+        ["TR2DQ6_f", imatnettype, ('t', 'y', 'x')],
+        ["TRBN7_f", imatnettype, ('t', 'z', 'y', 'x')],
+        ["TRBP1_f", imatnettype, ('t', 'z', 'y', 'x')],
+        ["TRBP2_f", imatnettype, ('t', 'z', 'y', 'x')],
+        ["TRBP3_f", imatnettype, ('t', 'z', 'y', 'x')],
+        ["TRBP4_f", imatnettype, ('t', 'z', 'y', 'x')],
+        ["TRBR4_f", imatnettype, ('t', 'z', 'y', 'x')],
+        ["TRBR6_f", imatnettype, ('t', 'z', 'y', 'x')],
+        ["TRNN7_f", imatnettype, ('t', 'z', 'y', 'x')],
+        ["TRNP1_f", imatnettype, ('t', 'z', 'y', 'x')],
+        ["TRNP2_f", imatnettype, ('t', 'z', 'y', 'x')],
+        ["TRNP3_f", imatnettype, ('t', 'z', 'y', 'x')],
+        ["TRNP4_f", imatnettype, ('t', 'z', 'y', 'x')],
+        ["TRNR4_f", imatnettype, ('t', 'z', 'y', 'x')],
+        ["TRNR6_f", imatnettype, ('t', 'z', 'y', 'x')],
             ]
-
-
+    miss_vars = []
     for (key,dtype, dims) in missing_vars:
          print('Adding missing variable:', key, dtype, dims)
          variables[key] = newnc.createVariable(key, dtype, dims)
+         All_Created_variables[key] = 'unfilled (missing)'
+         miss_vars.append(key)
 
     for (key,dtype, dims) in missing_vars:
-         print('Adding missing variable data:', key, 'gets data from iMarNet:', dims)
-         iMNkey = link_old_to_new_name(key, ncersem, nciMarNet)
-         arr = extend_ORCA(nciMarNet.variables[iMNkey][:])
-         variables[key] = arr
+        print('Adding missing variable data:', key, 'gets data from iMarNet:', dims)
+        iMNkey = link_old_to_new_name(key, ncersem, nciMarNet)
+        arr = nciMarNet.variables[iMNkey][:]
+        #arr = extend_ORCA(arr)
+        if np.ma.is_masked(arr.max()) or arr.max()>1.E10:
+            print(key, '->', iMNkey, arr.min(),arr.max())
+            assert 0
+        arr = extend_ORCA(arr)
+        if np.ma.is_masked(arr.max()) or arr.max()>1.E10:
+            print(key, '->', iMNkey, arr.min(),arr.max())
+            assert 0
+        variables[key] = arr
+        print(key, '->', iMNkey, arr.min(),arr.max())
+
+#        assert 0
+        All_Created_variables[key] = 'filled'
+        print(arr)
+        # assert 0
 
     #fill variables with data:
     for key, var in ncersem.variables.items():
         dims = tuple([dim.name for dim in var.get_dims()])
         shape = tuple([dim_sizes[dimname] for dimname in dims])
+        if key in miss_vars: assert 0 
         if debug:
             print('Adding variable data:', key, shape)
             variables[key][:] = np.ones(shape)
+            All_Created_variables[key] = 'filled_with_ones'
+
         else:
             # values where we take data from the physics model:
             if key in ['nav_lon', 'nav_lat' , 'nav_lev', 'time_counter', 'kt', 'ndastp', 'adatrj']:
                 print('Adding variable data:', key, 'gets data from physics!', shape, nc.variables[key].shape, dims)
                 variables[key][:] = nc.variables[key][:]
+                All_Created_variables[key] = 'filled_from_physics'
                 continue
 
             iMNkey = link_old_to_new_name(key, ncersem, nciMarNet)
             if iMNkey.upper() == 'ZERO':
                 print('Adding variable data:', key, 'gets set to zero:',iMNkey, shape, dims)
                 variables[key][:] = np.zeros(shape)
+                All_Created_variables[key] = 'filled_with_zeroes'
+
             else:
                 print('Adding variable data:', key, 'gets data from iMarNet:',iMNkey, nciMarNet.variables[iMNkey].shape, '->', shape, dims)
-
                 arr = extend_ORCA(nciMarNet.variables[iMNkey][:])
+                if np.ma.is_masked(arr.max()):
+                    print('Fully masked:', key, var, iMNkey)
                 variables[key][:] = arr
+                All_Created_variables[key] = 'filled_with_iMNkey'
 
-
+    for key in sorted(All_Created_variables.keys()):
+        print(key, All_Created_variables[key])
+    #assert 0
     # data
     print('Saving:', new_restart)
     newnc.close()
@@ -470,16 +509,28 @@ def plot_all(fn, fnkey):
             continue
         if data.min()==data.max() and data.min()!=0.:
             print(key,':', data.min())
-        plot_map(data, fnkey + ' '+key, fold = 'images/'+fnkey+'/')
+        if np.ma.is_masked(data.max()):
+            print('Fully masked:', key, var, fnkey)
+            #assert 0
+            fold = 'images/'+fnkey+'/fully_masked/'
+        fold = 'images/'+fnkey+'/'
+        try: os.mkdir(fold)
+        except: pass
+        plot_map(data, fnkey + ' '+key, fold = fold)
     nc.close()
 
 
 #plot_all(new_restart, 'newrestart')
 #plot_all(imarnet_restart, 'iMarNet')
-
-
-#
 #generate_ncdf()
-plot_all(new_restart, 'newrestart_v2')
-
+# plot_all(new_restart, 'newrestart_v3')
 # ncersem = Dataset(ersem_restart, 'r')
+
+def main():
+
+    new_restart = 'input/sthenno1/new_restart_v4.nc'
+
+    generate_ncdf(new_restart)
+    plot_all(new_restart, 'newrestart_v4')
+
+main()
