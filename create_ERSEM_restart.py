@@ -391,9 +391,10 @@ def generate_ncdf(new_restart, debug=False):
             dimname = 'z'
         if dimname == 'time_counter': # physics uses time_counter for this, but ERSEM uses t.
             dimname = 't'
-
+            dimsize = None 
         print('Adding dimension:', dim, dimname, dimsize)
         dimensions[dimname] = newnc.createDimension(dimname, dimsize)
+        if dimsize == None: dimsize = 1
         dim_sizes[dimname] = dimsize
 
     # copy variables from ERSEM
@@ -408,7 +409,9 @@ def generate_ncdf(new_restart, debug=False):
 
     # Add "missing" data from iMarNet which isn't in the AMM domain ERSEM (ie Iron)
     imatnettype = nciMarNet.variables['TRBP1f'].dtype
-    print(var.dtype, imatnettype)
+    ersemtype = ncersem.variables['TRBP1_c'].dtype
+
+    print(var.dtype, imatnettype, ersemtype)
     
     missing_vars = [
         ["TR2DQ6_f", imatnettype, ('t', 'y', 'x')],
@@ -427,6 +430,7 @@ def generate_ncdf(new_restart, debug=False):
         ["TRNR4_f", imatnettype, ('t', 'z', 'y', 'x')],
         ["TRNR6_f", imatnettype, ('t', 'z', 'y', 'x')],
             ]
+
     miss_vars = []
     for (key,dtype, dims) in missing_vars:
          print('Adding missing variable:', key, dtype, dims)
@@ -434,6 +438,7 @@ def generate_ncdf(new_restart, debug=False):
          All_Created_variables[key] = 'unfilled (missing)'
          miss_vars.append(key)
 
+    """
     for (key,dtype, dims) in missing_vars:
         print('Adding missing variable data:', key, 'gets data from iMarNet:', dims)
         iMNkey = link_old_to_new_name(key, ncersem, nciMarNet)
@@ -453,6 +458,7 @@ def generate_ncdf(new_restart, debug=False):
         All_Created_variables[key] = 'filled'
         print(arr)
         # assert 0
+    """
 
     #fill variables with data:
     for key, var in ncersem.variables.items():
@@ -485,6 +491,28 @@ def generate_ncdf(new_restart, debug=False):
                     print('Fully masked:', key, var, iMNkey)
                 variables[key][:] = arr
                 All_Created_variables[key] = 'filled_with_iMNkey'
+
+    for (key,dtype, dims) in missing_vars:
+        print('Adding missing variable data:', key, 'gets data from iMarNet:', dims)
+        iMNkey = link_old_to_new_name(key, ncersem, nciMarNet)
+        arr = nciMarNet.variables[iMNkey][:]
+        #arr = extend_ORCA(arr)
+        if np.ma.is_masked(arr.max()) or arr.max()>1.E10:
+            print(key, '->', iMNkey, arr.min(),arr.max())
+            assert 0
+        arr = extend_ORCA(arr)
+        if np.ma.is_masked(arr.max()) or arr.max()>1.E10:
+            print(key, '->', iMNkey, arr.min(),arr.max())
+            assert 0
+        variables[key][:] = arr
+        print(key, '->', iMNkey, arr.min(),arr.max())
+
+#        assert 0
+        All_Created_variables[key] = 'filled at last'
+        print('iMarNet iron', arr.min(), arr.max(), variables[key][:].min(), variables[key][:].max() )
+
+#    assert 0
+
 
     for key in sorted(All_Created_variables.keys()):
         print(key, All_Created_variables[key])
@@ -528,9 +556,9 @@ def plot_all(fn, fnkey):
 
 def main():
 
-    new_restart = 'input/sthenno1/new_restart_v4.nc'
+    new_restart = 'input/sthenno1/restart_trc_v7.nc'
 
     generate_ncdf(new_restart)
-    plot_all(new_restart, 'newrestart_v4')
+    plot_all(new_restart, 'restart_trc_v7')
 
 main()
