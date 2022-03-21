@@ -361,7 +361,7 @@ def test_linking():
 
     for i,fail in enumerate(failures):
         print('not found:', i, fail)
-test_linking()
+#test_linking()
 
 
 def calc_bathymetry():
@@ -375,8 +375,10 @@ def calc_bathymetry():
 
     bathy_m = np.zeros_like(bathy_ints[0]) # 2d field
     for (z,y,x), bathy in np.ndenumerate(bathy_ints):
-        if not bathy: continue
-        bathy_m[z,y,x] = nav_lev[bathy]
+        if np.ma.is_masked(bathy): continue
+        if bathy == -2147483647: continue
+
+        bathy_m[y,x] = nav_lev[bathy]
     plot_map(bathy_m, 'bathy', fold = 'images/')
 
     return bathy_m
@@ -662,7 +664,7 @@ def plot_all(fn, fnkey):
 
 def main():
     calc_bathymetry()
-
+    assert 0
     new_restart = 'input/sthenno1/restart_trc_v9.nc'
 
     generate_ncdf(new_restart, 'restart_trc_v9')
