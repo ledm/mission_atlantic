@@ -20,6 +20,7 @@ iMarNet_inputs = "/data/sthenno1/to_archive/ledm/Projects/iMarNet/inputNetCDFs/"
 imarnet_restart = 'input/iMARNET_fields_1890_UEA_ERSEM_newFeR3c_20140919.nc'
 eorca_restart = 'input/eORCA1_00000992_restart.nc'
 ersem_restart = 'input/sthenno1/restart_trc.HC.1986-1990.12.nc'
+grid_nc = 'input/eORCA1_mesh_mask.nc'
 
 def regrid(arr, lons, lats, new_lons, new_lats, method='linear',):
     """
@@ -363,9 +364,30 @@ def test_linking():
 test_linking()
 
 
+def calc_bathymetry():
+    """
+    Use thge grid file to calculate a bathymetry field.
+    .
+    """
+    ncgrid = Dataset(grid_nc, 'r')
+    bathy_ints = ncgrid.variables['mbathy'][:]
+    nav_lev = ncgrid.variables['nav_lev'][:]
+
+    bathy_m = np.zeros_like(bathy_ints[0]) # 2d field
+    for (z,y,x), bathy in np.ndenumerate(bathy_ints):
+        if not bathy: continue
+        bathy_m[z,y,x] = nav_lev[bathy]
+    plot_map(bathy_m, 'bathy', fold = 'images/')
+
+    return bathy_m
+
+
+
+
+
 ###
 # Generate a new netCDF.
-def generate_ncdf(new_restart, debug=False):
+def generate_ncdf(new_restart, fnkey, debug=False):
 
     if os.path.exists(new_restart):
         print('file exists', generate_ncdf)
@@ -394,7 +416,7 @@ def generate_ncdf(new_restart, debug=False):
             dimname = 'z'
         if dimname == 'time_counter': # physics uses time_counter for this, but ERSEM uses t.
             dimname = 't'
-            dimsize = None 
+            dimsize = None
         print('Adding dimension:', dim, dimname, dimsize)
         dimensions[dimname] = newnc.createDimension(dimname, dimsize)
         if dimsize == None: dimsize = 1
@@ -414,8 +436,9 @@ def generate_ncdf(new_restart, debug=False):
     imatnettype = nciMarNet.variables['TRBP1f'].dtype
     ersemtype = ncersem.variables['TRBP1_c'].dtype
 
+    bathy_m = calc_bathymetry()
     print(var.dtype, imatnettype, ersemtype)
-    
+
     missing_vars = [
         ["TR2DQ6_f", imatnettype, ('t', 'y', 'x')],
         ["TRBN7_f", imatnettype, ('t', 'z', 'y', 'x')],
@@ -433,7 +456,7 @@ def generate_ncdf(new_restart, debug=False):
         ["TRNR4_f", imatnettype, ('t', 'z', 'y', 'x')],
         ["TRNR6_f", imatnettype, ('t', 'z', 'y', 'x')],]
 
-    new_vars = [         
+    new_vars = [
         ['TRBO3_TA', imatnettype, ('t', 'z', 'y', 'x')],
         ['TRNO3_TA', imatnettype, ('t', 'z', 'y', 'x')],
         ['fabm_st2DbQ6_f', imatnettype, ('t', 'y', 'x')],
@@ -452,6 +475,45 @@ def generate_ncdf(new_restart, debug=False):
         'fabm_st2DnK7_f': 20.1,
         }
 
+    new_benthic_lambdas = {
+        'Y2_c': lambda h: 8834.4 * h ** (-0.1651),
+        'Y3_c': lambda h: -1300*np.log(h) + 8830.8,
+        'Y4_c': lambda h: 0.1689*h + 55.342,
+
+        'H2_c': lambda h: -156.98*np.log(h) + 1139.8,
+        'H1_c': lambda h: 0.61*h + 23.98,
+
+        'Q1_c': lambda h: 828.74*h**(-0.6246),
+        'Q1_n': lambda h: 21.103*h**(-0.6882),
+        'Q1_p' : lambda h: 1.60278*h**(-0.6725),
+
+        'Q6_c': lambda h: -1069*np.log(h) + 10900,
+        'Q6_n': lambda h: -7.6368*np.log(h) + 78.564,
+        'Q6_p': lambda h: -0.545*np.log(h) + 6.0114,
+        'Q6_s': lambda h: -64.598*np.log(h) + 391.61,
+        'Q6_pen_depth_c': lambda h: 0.0486*h**0.103,
+        'Q6_pen_depth_n': lambda h: 0.0486*h**0.104,
+        'Q6_pen_depth_p': lambda h: 0.0484*h**0.1042,
+        'Q6_pen_depth_s': lambda h: 1e-5*h + 0.0232,
+
+        'Q7_c': lambda h: 50*(-1069*np.log(h) + 10900),
+        'Q7_n': lambda h: 50*(-7.6368*np.log(h) + 78.564),
+        'Q7_p': lambda h: 50*(-0.545*np.log(h) + 6.0114),
+        'Q7_pen_depth_c': lambda h: 1e-5*h + 0.0155,
+        'Q7_pen_depth_n': lambda h: 8e-6*h + 0.0155,
+        'Q7_pen_depth_p': lambda h: 0.0495*h**0.0965,
+
+        'Q17_c': lambda h: h*0.,
+        'Q17_n': lambda h: h*0.,
+        'Q17_p': lambda h: h*0.,
+        'G2_o_deep': lambda h: h*0.,
+    }
+    new_benthic_lambdas_keys = new_benthic_lambdas.keys()
+    for key in new_benthic_lambdas_keys:
+        new_benthic_lambdas['fabm_st2Db'+key] = new_benthic_lambdas[key]
+        new_benthic_lambdas['fabm_st2Dn'+key] = new_benthic_lambdas[key]
+
+
     miss_vars = []
     for (key,dtype, dims) in missing_vars:
          print('Adding missing variable:', key, dtype, dims)
@@ -468,7 +530,7 @@ def generate_ncdf(new_restart, debug=False):
 
     for (key,dtype, dims) in new_vars:
         print('Adding new variable data:', key)
-        if key in ['TRBO3_TA', 'TRNO3_TA']: 
+        if key in ['TRBO3_TA', 'TRNO3_TA']:
             iMNkey = link_old_to_new_name(key, ncersem, nciMarNet)
             arr = nciMarNet.variables[iMNkey][:]
             arr = extend_ORCA(arr)
@@ -508,7 +570,7 @@ def generate_ncdf(new_restart, debug=False):
     for key, var in ncersem.variables.items():
         dims = tuple([dim.name for dim in var.get_dims()])
         shape = tuple([dim_sizes[dimname] for dimname in dims])
-        if key in miss_vars: assert 0 
+        if key in miss_vars: assert 0
         if debug:
             print('Adding variable data:', key, shape)
             variables[key][:] = np.ones(shape)
@@ -599,10 +661,11 @@ def plot_all(fn, fnkey):
 # ncersem = Dataset(ersem_restart, 'r')
 
 def main():
+    calc_bathymetry()
 
-    new_restart = 'input/sthenno1/restart_trc_v8.nc'
+    new_restart = 'input/sthenno1/restart_trc_v9.nc'
 
-    generate_ncdf(new_restart)
-    plot_all(new_restart, 'restart_trc_v8')
+    generate_ncdf(new_restart, 'restart_trc_v9')
+    plot_all(new_restart, 'restart_trc_v9')
 
 main()
