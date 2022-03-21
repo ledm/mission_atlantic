@@ -437,6 +437,7 @@ def generate_ncdf(new_restart, fnkey, debug=False):
     ersemtype = ncersem.variables['TRBP1_c'].dtype
 
     bathy_m = calc_bathymetry()
+
     print(var.dtype, imatnettype, ersemtype)
 
     missing_vars = [
@@ -508,6 +509,7 @@ def generate_ncdf(new_restart, fnkey, debug=False):
         'Q17_p': lambda h: h*0.,
         'G2_o_deep': lambda h: h*0.,
     }
+
     new_benthic_lambdas_keys = new_benthic_lambdas.keys()
     for key in new_benthic_lambdas_keys:
         new_benthic_lambdas['fabm_st2Db'+key] = new_benthic_lambdas[key]
@@ -535,6 +537,10 @@ def generate_ncdf(new_restart, fnkey, debug=False):
             arr = nciMarNet.variables[iMNkey][:]
             arr = extend_ORCA(arr)
             All_Created_variables[key] = 'filled from imarnet'
+
+        elif key in new_benthic_lambdas.keys():
+            arr = new_benthic_lambdas[key](bathy_m)
+            All_Created_variables[key] = 'filled from bathy'
 
         elif key in new_vars_flats:
             shape = tuple([dim_sizes[dimname] for dimname in dims])
@@ -585,7 +591,10 @@ def generate_ncdf(new_restart, fnkey, debug=False):
                 continue
 
             iMNkey = link_old_to_new_name(key, ncersem, nciMarNet)
-            if iMNkey.upper() == 'ZERO':
+            if key in new_benthic_lambdas.keys():
+                arr = new_benthic_lambdas[key](bathy_m)
+                All_Created_variables[key] = 'filled from bathy (2)'
+            elif iMNkey.upper() == 'ZERO':
                 print('Adding variable data:', key, 'gets set to zero:',iMNkey, shape, dims)
                 variables[key][:] = np.zeros(shape)
                 All_Created_variables[key] = 'filled_with_zeroes'
@@ -601,15 +610,19 @@ def generate_ncdf(new_restart, fnkey, debug=False):
     for (key,dtype, dims) in missing_vars:
         print('Adding missing variable data:', key, 'gets data from iMarNet:', dims)
         iMNkey = link_old_to_new_name(key, ncersem, nciMarNet)
-        arr = nciMarNet.variables[iMNkey][:]
-        #arr = extend_ORCA(arr)
-        if np.ma.is_masked(arr.max()) or arr.max()>1.E10:
-            print(key, '->', iMNkey, arr.min(),arr.max())
-            assert 0
-        arr = extend_ORCA(arr)
-        if np.ma.is_masked(arr.max()) or arr.max()>1.E10:
-            print(key, '->', iMNkey, arr.min(),arr.max())
-            assert 0
+        if key in new_benthic_lambdas.keys():
+            arr = new_benthic_lambdas[key](bathy_m)
+            All_Created_variables[key] = 'filled from bathy (3)'
+        else:
+            arr = nciMarNet.variables[iMNkey][:]
+            #arr = extend_ORCA(arr)
+            if np.ma.is_masked(arr.max()) or arr.max()>1.E10:
+                print(key, '->', iMNkey, arr.min(),arr.max())
+                assert 0
+            arr = extend_ORCA(arr)
+            if np.ma.is_masked(arr.max()) or arr.max()>1.E10:
+                print(key, '->', iMNkey, arr.min(),arr.max())
+                assert 0
         variables[key][:] = arr
         print(key, '->', iMNkey, arr.min(),arr.max())
 
