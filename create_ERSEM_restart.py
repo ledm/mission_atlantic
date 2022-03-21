@@ -71,6 +71,8 @@ master_dict = {
 
         'TRBO3_bioalk' : 'TRBbioalk',
         'TRNO3_bioalk' : 'TRNbioalk',
+        'TRBO3_TA': 'TRBbioalk',
+        'TRNO3_TA': 'TRNbioalk',
 
         'TRNlight_ADY' : 'ZERO', # Need to write to James
         'TRBlight_ADY' : 'ZERO',
@@ -120,6 +122,7 @@ master_dict = {
         'fabm_st2Dbben_col_D1m': 'TR2DD1m',
         'fabm_st2Dbben_col_D2m': 'TR2DD2m',
         }
+
 
 def link_old_to_new_name(new_name, nc1, nc2):
     """
@@ -428,8 +431,26 @@ def generate_ncdf(new_restart, debug=False):
         ["TRNP3_f", imatnettype, ('t', 'z', 'y', 'x')],
         ["TRNP4_f", imatnettype, ('t', 'z', 'y', 'x')],
         ["TRNR4_f", imatnettype, ('t', 'z', 'y', 'x')],
-        ["TRNR6_f", imatnettype, ('t', 'z', 'y', 'x')],
+        ["TRNR6_f", imatnettype, ('t', 'z', 'y', 'x')],]
+
+    new_vars = [         
+        ['TRBO3_TA', imatnettype, ('t', 'z', 'y', 'x')],
+        ['TRNO3_TA', imatnettype, ('t', 'z', 'y', 'x')],
+        ['fabm_st2DbQ6_f', imatnettype, ('t', 'y', 'x')],
+        ['fabm_st2DbQ6_pen_depth_f', imatnettype, ('t', 'y', 'x')],
+        ['fabm_st2DbK7_f', imatnettype, ('t', 'y', 'x')],
+        ['fabm_st2DnQ6_f', imatnettype, ('t', 'y', 'x')],
+        ['fabm_st2DnQ6_pen_depth_f', imatnettype, ('t', 'y', 'x')],
+        ['fabm_st2DnK7_f', imatnettype, ('t', 'y', 'x')],
             ]
+    new_vars_flats = {
+        'fabm_st2DbQ6_f':1.695 ,
+        'fabm_st2DbQ6_pen_depth_f': 0.02,
+        'fabm_st2DbK7_f': 20.1,
+        'fabm_st2DnQ6_f': 1.695,
+        'fabm_st2DnQ6_pen_depth_f': 0.02,
+        'fabm_st2DnK7_f': 20.1,
+        }
 
     miss_vars = []
     for (key,dtype, dims) in missing_vars:
@@ -437,6 +458,29 @@ def generate_ncdf(new_restart, debug=False):
          variables[key] = newnc.createVariable(key, dtype, dims)
          All_Created_variables[key] = 'unfilled (missing)'
          miss_vars.append(key)
+
+    for (key,dtype, dims) in new_vars:
+         print('Adding new variable:', key, dtype, dims)
+         variables[key] = newnc.createVariable(key, dtype, dims)
+         All_Created_variables[key] = 'unfilled (new)'
+
+    #fill variables with data:
+
+    for (key,dtype, dims) in new_vars:
+        print('Adding new variable data:', key)
+        if key in ['TRBO3_TA', 'TRNO3_TA']: 
+            iMNkey = link_old_to_new_name(key, ncersem, nciMarNet)
+            arr = nciMarNet.variables[iMNkey][:]
+            arr = extend_ORCA(arr)
+            All_Created_variables[key] = 'filled from imarnet'
+
+        elif key in new_vars_flats:
+            shape = tuple([dim_sizes[dimname] for dimname in dims])
+            arr = np.ones(shape) * new_vars_flats[key]
+            All_Created_variables[key] = 'filled_with '+str(new_vars_flats[key])
+
+        else: assert 0
+        variables[key][:] = arr
 
     """
     for (key,dtype, dims) in missing_vars:
@@ -556,9 +600,9 @@ def plot_all(fn, fnkey):
 
 def main():
 
-    new_restart = 'input/sthenno1/restart_trc_v7.nc'
+    new_restart = 'input/sthenno1/restart_trc_v8.nc'
 
     generate_ncdf(new_restart)
-    plot_all(new_restart, 'restart_trc_v7')
+    plot_all(new_restart, 'restart_trc_v8')
 
 main()
