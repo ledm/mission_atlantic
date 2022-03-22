@@ -373,12 +373,12 @@ def calc_bathymetry():
     bathy_ints = ncgrid.variables['mbathy'][:]
     nav_lev = ncgrid.variables['nav_lev'][:]
 
-    bathy_m = np.zeros_like(bathy_ints[0]) # 2d field
+    bathy_m = np.zeros_like(bathy_ints) # 3d field?
     for (z,y,x), bathy in np.ndenumerate(bathy_ints):
         if np.ma.is_masked(bathy): continue
         if bathy == -2147483647: continue
 
-        bathy_m[y,x] = nav_lev[bathy]
+        bathy_m[z,y,x] = nav_lev[bathy]
     plot_map(bathy_m, 'bathy', fold = 'images/')
 
     return bathy_m
@@ -512,11 +512,16 @@ def generate_ncdf(new_restart, fnkey, debug=False):
         'G2_o_deep': lambda h: h*0.,
     }
 
-    new_benthic_lambdas_keys = new_benthic_lambdas.keys()
+    new_benthic_lambdas_keys = list(new_benthic_lambdas.keys())
     for key in new_benthic_lambdas_keys:
         new_benthic_lambdas['fabm_st2Db'+key] = new_benthic_lambdas[key]
         new_benthic_lambdas['fabm_st2Dn'+key] = new_benthic_lambdas[key]
 
+    new_benthic_lambdas_data = {}
+    for key in new_benthic_lambdas.keys():
+        print('calculate:', key) 
+        new_benthic_lambdas_data[key] =  new_benthic_lambdas[key](bathy_m)
+        print('calculate:',key, new_benthic_lambdas_data[key].min(), new_benthic_lambdas_data[key].max())
 
     miss_vars = []
     for (key,dtype, dims) in missing_vars:
@@ -541,7 +546,8 @@ def generate_ncdf(new_restart, fnkey, debug=False):
             All_Created_variables[key] = 'filled from imarnet'
 
         elif key in new_benthic_lambdas.keys():
-            arr = new_benthic_lambdas[key](bathy_m)
+            #arr = new_benthic_lambdas[key](bathy_m)
+            arr = new_benthic_lambdas_data[key]
             All_Created_variables[key] = 'filled from bathy'
 
         elif key in new_vars_flats:
@@ -594,8 +600,12 @@ def generate_ncdf(new_restart, fnkey, debug=False):
 
             iMNkey = link_old_to_new_name(key, ncersem, nciMarNet)
             if key in new_benthic_lambdas.keys():
-                arr = new_benthic_lambdas[key](bathy_m)
+                #arr = new_benthic_lambdas[key](bathy_m)
+                arr = new_benthic_lambdas_data[key]
+
                 All_Created_variables[key] = 'filled from bathy (2)'
+                variables[key][:] = arr
+
             elif iMNkey.upper() == 'ZERO':
                 print('Adding variable data:', key, 'gets set to zero:',iMNkey, shape, dims)
                 variables[key][:] = np.zeros(shape)
@@ -613,20 +623,32 @@ def generate_ncdf(new_restart, fnkey, debug=False):
         print('Adding missing variable data:', key, 'gets data from iMarNet:', dims)
         iMNkey = link_old_to_new_name(key, ncersem, nciMarNet)
         if key in new_benthic_lambdas.keys():
-            arr = new_benthic_lambdas[key](bathy_m)
+            print(key, '->', 'new_benthic_lambdas pre')
+            #arr = new_benthic_lambdas[key](bathy_m)
+            arr = new_benthic_lambdas_data[key]
+
             All_Created_variables[key] = 'filled from bathy (3)'
+            variables[key][:] = arr
+            print(key, '->', 'new_benthic_lambdas', arr.min(),arr.max())
+
         else:
+            print('loading:', iMNkey, 'from imarnet')
             arr = nciMarNet.variables[iMNkey][:]
             #arr = extend_ORCA(arr)
             if np.ma.is_masked(arr.max()) or arr.max()>1.E10:
                 print(key, '->', iMNkey, arr.min(),arr.max())
                 assert 0
+            print('extend orca - pre', arr.shape)
             arr = extend_ORCA(arr)
+            print('extend orca - post', arr.shape)
+
             if np.ma.is_masked(arr.max()) or arr.max()>1.E10:
-                print(key, '->', iMNkey, arr.min(),arr.max())
+                print(key, '->', iMNkey, arr.min(), arr.max())
                 assert 0
-        variables[key][:] = arr
-        print(key, '->', iMNkey, arr.min(),arr.max())
+            print('set variable output:', key, arr.shape, variables[key][:].shape)
+            if arr.shape != variables[key][:].shape: assert 0
+            variables[key][:] = arr
+            print(key, '->', iMNkey, arr.min(),arr.max())
 
 #        assert 0
         All_Created_variables[key] = 'filled at last'
@@ -677,7 +699,7 @@ def plot_all(fn, fnkey):
 
 def main():
     calc_bathymetry()
-    assert 0
+    #assert 0
     new_restart = 'input/sthenno1/restart_trc_v9.nc'
 
     generate_ncdf(new_restart, 'restart_trc_v9')
