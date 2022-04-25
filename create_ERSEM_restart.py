@@ -384,6 +384,51 @@ def calc_bathymetry():
     return bathy_m
 
 
+def calc_K_benthic(h, imn_key ):
+    """
+    Use thge grid file to calculate a bathymetry field.
+    h is not needed
+    """
+    ncgrid = Dataset(grid_nc, 'r')
+    bathy_ints = ncgrid.variables['mbathy'][:]
+    ncgrid.close()
+
+    imnnc = Dataset(imarnet_restart, 'r')
+    TRNN7f = imnnc.variables[imn_key][:]
+    imnnc.close()
+    TRNN7f = TRNN7f *0.12 # porosity.
+
+    TRNN7f = extend_ORCA(TRNN7f)
+
+    n7_f_out = np.zeros_like(bathy_ints)*0. # 3d field?
+    for (z,y,x), bathy in np.ndenumerate(bathy_ints):
+        if np.ma.is_masked(bathy): continue
+        if bathy == -2147483647: continue
+        if bathy == 0: continue
+        if TRNN7f[z, bathy, y, x] != 0.:
+            n7_f_out[z,y,x] = TRNN7f[z, bathy, y, x]
+        elif TRNN7f[z, bathy -1, y, x] != 0.: 
+            n7_f_out[z,y,x] = TRNN7f[z, bathy-1, y, x]
+        else:
+            print('fail', imn_key, z,y,x,'bathy', bathy, n7_f_out[z,y,x], TRNN7f[z, bathy, y, x])
+            assert 0
+        print(imn_key, z,y,x,'bathy', bathy, n7_f_out[z,y,x], TRNN7f[z, bathy, y, x])
+
+    plot_map(n7_f_out[0], imn_key, fold = 'images/')
+    print('calc_K_benthic', imn_key, n7_f_out.min(), n7_f_out.max())
+    if  n7_f_out.min()==n7_f_out.max():
+        print('problem:',imn_key, n7_f_out.min(),'==',n7_f_out.max(), TRNN7f.min(), TRNN7f.max())
+    #    assert 0
+    #if imn_key.find('N7')>-1: assert 0
+    return n7_f_out
+
+def calc_K_benthic_K1_p(h): return calc_K_benthic(h, 'TRNN1p' )
+def calc_K_benthic_K3_n(h): return calc_K_benthic(h, 'TRNN3n' )
+def calc_K_benthic_K4_n(h): return calc_K_benthic(h, 'TRNN4n' )
+def calc_K_benthic_K5_s(h): return calc_K_benthic(h, 'TRNN5s' )
+def calc_K_benthic_K7_f(h): return calc_K_benthic(h, 'TRNN7f' )
+def calc_K_benthic_G2_o(h): return calc_K_benthic(h, 'TRNO2o' )
+def calc_K_benthic_G3_c(h): return calc_K_benthic(h, 'TRNO3c' )
 
 
 
@@ -392,7 +437,7 @@ def calc_bathymetry():
 def generate_ncdf(new_restart, fnkey, debug=False):
 
     if os.path.exists(new_restart):
-        print('file exists', generate_ncdf)
+        print('file exists', new_restart)
         return
     nc = Dataset(eorca_restart, 'r')
     ncersem = Dataset(ersem_restart, 'r')
@@ -464,18 +509,34 @@ def generate_ncdf(new_restart, fnkey, debug=False):
         ['TRNO3_TA', imatnettype, ('t', 'z', 'y', 'x')],
         ['fabm_st2DbQ6_f', imatnettype, ('t', 'y', 'x')],
         ['fabm_st2DbQ6_pen_depth_f', imatnettype, ('t', 'y', 'x')],
-        ['fabm_st2DbK7_f', imatnettype, ('t', 'y', 'x')],
+#        ['fabm_st2DbK7_f', imatnettype, ('t', 'y', 'x')],
         ['fabm_st2DnQ6_f', imatnettype, ('t', 'y', 'x')],
         ['fabm_st2DnQ6_pen_depth_f', imatnettype, ('t', 'y', 'x')],
-        ['fabm_st2DnK7_f', imatnettype, ('t', 'y', 'x')],
+#        ['fabm_st2DnK7_f', imatnettype, ('t', 'y', 'x')],
+        ['sbc_N7_f_b', imatnettype, ('t', 'y', 'x')],
+        ['sbc_O3_TA_b', imatnettype, ('t', 'y', 'x')],
+        ['sbc_R4_f_b', imatnettype, ('t', 'y', 'x')],
+        ['sbc_R6_f_b', imatnettype, ('t', 'y', 'x')],
+        ['sbc_P1_f_b', imatnettype, ('t', 'y', 'x')],
+        ['sbc_P2_f_b', imatnettype, ('t', 'y', 'x')],
+        ['sbc_P3_f_b', imatnettype, ('t', 'y', 'x')],
+        ['sbc_P4_f_b', imatnettype, ('t', 'y', 'x')],
             ]
     new_vars_flats = {
         'fabm_st2DbQ6_f':1.695 ,
         'fabm_st2DbQ6_pen_depth_f': 0.02,
-        'fabm_st2DbK7_f': 20.1,
+#        'fabm_st2DbK7_f': 20.1,
         'fabm_st2DnQ6_f': 1.695,
         'fabm_st2DnQ6_pen_depth_f': 0.02,
-        'fabm_st2DnK7_f': 20.1,
+#        'fabm_st2DnK7_f': 20.1,
+        'sbc_N7_f_b': 0.,
+        'sbc_O3_TA_b': 0.,
+        'sbc_R4_f_b': 0.,
+        'sbc_R6_f_b': 0.,
+        'sbc_P1_f_b': 0.,
+        'sbc_P2_f_b': 0.,
+        'sbc_P3_f_b': 0.,
+        'sbc_P4_f_b': 0.,
         }
 
     new_benthic_lambdas = {
@@ -489,27 +550,49 @@ def generate_ncdf(new_restart, fnkey, debug=False):
         'Q1_c': lambda h: 828.74*h**(-0.6246),
         'Q1_n': lambda h: 21.103*h**(-0.6882),
         'Q1_p' : lambda h: 1.60278*h**(-0.6725),
+        'Q1_f': lambda h: (828.74*h**(-0.6246))/2000.,
 
         'Q6_c': lambda h: -1069*np.log(h) + 10900,
         'Q6_n': lambda h: -7.6368*np.log(h) + 78.564,
         'Q6_p': lambda h: -0.545*np.log(h) + 6.0114,
         'Q6_s': lambda h: -64.598*np.log(h) + 391.61,
+        'Q6_f': lambda h: (-1069*np.log(h) + 10900)/2000.,
+
+
         'Q6_pen_depth_c': lambda h: 0.0486*h**0.103,
         'Q6_pen_depth_n': lambda h: 0.0486*h**0.104,
         'Q6_pen_depth_p': lambda h: 0.0484*h**0.1042,
         'Q6_pen_depth_s': lambda h: 1e-5*h + 0.0232,
+        'Q6_pen_depth_f': lambda h: 0.0486*h**0.103, # same as carbon
+
 
         'Q7_c': lambda h: 50*(-1069*np.log(h) + 10900),
         'Q7_n': lambda h: 50*(-7.6368*np.log(h) + 78.564),
         'Q7_p': lambda h: 50*(-0.545*np.log(h) + 6.0114),
+        'Q7_f': lambda h: 50*(-1069*np.log(h) + 10900)/2000., # same ratio as phytoplankton
+
         'Q7_pen_depth_c': lambda h: 1e-5*h + 0.0155,
         'Q7_pen_depth_n': lambda h: 8e-6*h + 0.0155,
         'Q7_pen_depth_p': lambda h: 0.0495*h**0.0965,
+        'Q7_pen_depth_f': lambda h: 1e-5*h + 0.0155, # same as carbon
 
         'Q17_c': lambda h: h*0.,
         'Q17_n': lambda h: h*0.,
         'Q17_p': lambda h: h*0.,
+        'Q17_f': lambda h: h*0.,
         'G2_o_deep': lambda h: h*0.,
+
+        'K1_p': calc_K_benthic_K1_p,
+        'K3_n': calc_K_benthic_K3_n,
+        'K4_n': calc_K_benthic_K4_n,
+        'K5_s': calc_K_benthic_K5_s,
+        'K7_f': calc_K_benthic_K7_f,
+        'G2_o': calc_K_benthic_G2_o,
+        'G3_c': calc_K_benthic_G3_c,
+
+        'D1_m': lambda h: np.clip(0.0026*h**0.3286, 0.01, 1E20), # enforce min 0.01, aka 1cm)
+        'D2_m': lambda h: np.clip(0.011*h**0.4018, 0., 0.3 - 0.0026*h**0.3286), #enforce D1m + D2m < benthic thickness, usually 0.3
+
     }
 
     new_benthic_lambdas_keys = list(new_benthic_lambdas.keys())
@@ -521,7 +604,8 @@ def generate_ncdf(new_restart, fnkey, debug=False):
     for key in new_benthic_lambdas.keys():
         print('calculate:', key) 
         new_benthic_lambdas_data[key] =  new_benthic_lambdas[key](bathy_m)
-        print('calculate:',key, new_benthic_lambdas_data[key].min(), new_benthic_lambdas_data[key].max())
+        print('calculate:',key, new_benthic_lambdas_data[key].min(), new_benthic_lambdas_data[key].max(),  new_benthic_lambdas_data[key].shape)
+    #assert 0
 
     miss_vars = []
     for (key,dtype, dims) in missing_vars:
@@ -554,8 +638,9 @@ def generate_ncdf(new_restart, fnkey, debug=False):
             shape = tuple([dim_sizes[dimname] for dimname in dims])
             arr = np.ones(shape) * new_vars_flats[key]
             All_Created_variables[key] = 'filled_with '+str(new_vars_flats[key])
-
-        else: assert 0
+        else: 
+            assert 0
+        print('All_Created_variables', key, All_Created_variables[key], arr.min(), arr.max())
         variables[key][:] = arr
 
     """
@@ -698,11 +783,11 @@ def plot_all(fn, fnkey):
 # ncersem = Dataset(ersem_restart, 'r')
 
 def main():
-    calc_bathymetry()
+    #calc_bathymetry()
     #assert 0
-    new_restart = 'input/sthenno1/restart_trc_v9.nc'
+    new_restart = 'input/sthenno1/restart_trc_v10.nc'
 
-    generate_ncdf(new_restart, 'restart_trc_v9')
-    plot_all(new_restart, 'restart_trc_v9')
+    generate_ncdf(new_restart, 'restart_trc_v10')
+    plot_all(new_restart, 'restart_trc_v10')
 
 main()
